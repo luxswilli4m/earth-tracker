@@ -1,5 +1,7 @@
 # Earth Tracker
 
+**🌍 Open the app: https://luxswilli4m.github.io/earth-tracker/**
+
 A live 3D globe of what's moving around the planet and how the world trades. It's built in stages:
 
 1. **Globe, sign-in and satellites** ← done
