@@ -1,0 +1,17 @@
+name = "earth-tracker"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+# Sites allowed to call this API from a browser. Add your local dev server if you use one.
+ALLOWED_ORIGINS = "https://luxswilli4m.github.io,http://localhost:8080"
+
+# Brute-force protection for the sign-in endpoint: 10 attempts per minute per IP.
+# If `wrangler deploy` rejects this block on your plan, delete it; sign-in still works without it.
+[[ratelimits]]
+name = "LOGIN_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

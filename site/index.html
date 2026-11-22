@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Earth Tracker</title>
+  <meta name="description" content="A live 3D globe of the world's satellites, with more layers on the way.">
+  <script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/';</script>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Cesium.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Widgets/widgets.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="globe"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Earth Tracker</span>
+    </div>
+    <div class="topbar-right">
+      <button id="now-btn" class="chip" title="Jump back to the current time at normal speed">Live</button>
+      <button id="auth-btn" class="chip"></button>
+    </div>
+  </header>
+
+  <aside class="panel" id="layers-panel">
+    <div class="panel-head">
+      <h2>Layers</h2>
+      <button class="icon-btn" id="panel-toggle" aria-label="Collapse panel" title="Collapse">–</button>
+    </div>
+    <div class="panel-body">
+      <section class="layer">
+        <label class="layer-title">
+          <input type="checkbox" id="sat-toggle" checked>
+          <span>Satellites</span>
+          <span class="count" id="sat-count">loading…</span>
+        </label>
+
+        <div class="search">
+          <input id="sat-search" type="search" placeholder="Search name or NORAD ID" autocomplete="off">
+          <ul id="search-results" class="results" hidden></ul>
+        </div>
+
+        <div class="group-label">Orbit</div>
+        <div class="orbit-chips" id="orbit-chips"></div>
+
+        <div class="group-label">Owner</div>
+        <select id="owner-filter"><option value="">All owners</option></select>
+
+        <label class="check">
+          <input type="checkbox" id="payload-only">
+          <span>Working satellites only (hide rocket bodies and debris)</span>
+        </label>
+
+        <p class="source" id="sat-source"></p>
+      </section>
+
+      <section class="layer upcoming">
+        <div class="layer-title"><span>Ships</span><span class="soon">stage 2</span></div>
+        <div class="layer-title"><span>Aircraft</span><span class="soon">stage 3</span></div>
+        <div class="layer-title"><span>Earthquakes, fires, ports</span><span class="soon">stage 4</span></div>
+        <div class="layer-title"><span>Trade flows and policy</span><span class="soon">stage 5</span></div>
+        <div class="layer-title"><span>Markets</span><span class="soon">stage 6 · sign-in</span></div>
+      </section>
+    </div>
+  </aside>
+
+  <aside class="card" id="info-card" hidden>
+    <button class="icon-btn close" id="info-close" aria-label="Close">×</button>
+    <div class="card-kicker" id="info-kicker"></div>
+    <h3 id="info-name"></h3>
+    <dl id="info-list"></dl>
+    <p class="note" id="info-note"></p>
+  </aside>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p id="loading-text">Loading satellites…</p>
+  </div>
+
+  <dialog id="auth-dialog">
+    <form method="dialog" id="auth-form">
+      <h3>Sign in</h3>
+      <p>The map is open to everyone. Signing in unlocks live feeds and the markets panel as they arrive.</p>
+      <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+      <p class="error" id="auth-error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="chip" id="auth-cancel">Cancel</button>
+        <button type="submit" class="chip primary" id="auth-submit">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
