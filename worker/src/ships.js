@@ -13,6 +13,16 @@ import { DurableObject } from 'cloudflare:workers';
 import { viewToBoxes, inBoxes, mergeBoxes, parseAis, packPos } from './ships-core.js';
 
 const AIS_URL = 'https://stream.aisstream.io/v0/stream';
+
+// WebSocket messages can arrive as text, ArrayBuffer, a typed array or a Blob depending on how the
+// sender framed them (aisstream sends binary frames). Turn any of them into text.
+async function messageText(data) {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+  if (data && typeof data.text === 'function') return data.text();
+  if (data && typeof data.arrayBuffer === 'function') return new TextDecoder().decode(await data.arrayBuffer());
+  return String(data);
+}
 const MESSAGE_TYPES = ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport', 'ShipStaticData', 'StaticDataReport'];
 const IDLE_MS = 2 * 60_000; // hang up this long after the last viewer leaves
 const POS_TTL = 30 * 60_000; // forget ships not heard from in 30 minutes
@@ -60,10 +70,10 @@ export class ShipRelay extends DurableObject {
     return new Response(null, { status: 101, webSocket: client, headers: { 'Sec-WebSocket-Protocol': 'earth-tracker' } });
   }
 
-  onViewerMessage(ws, data) {
+  async onViewerMessage(ws, data) {
     let msg;
     try {
-      msg = JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data));
+      msg = JSON.parse(await messageText(data));
     } catch {
       return;
     }
@@ -195,7 +205,10 @@ export class ShipRelay extends DurableObject {
       ws.send(JSON.stringify(sub));
       this.subKey = JSON.stringify(sub.BoundingBoxes);
       this.lastSubAt = Date.now();
-      ws.addEventListener('message', (e) => this.onAis(e.data));
+      ws.addEventListener('message', (e) => {
+        // Never let one bad message take the connection down.
+        this.onAis(e.data).catch((err) => { this.stats.lastError = `message handling failed: ${err.message}`; });
+      });
       ws.addEventListener('close', (e) => {
         this.stats.lastClose = `${new Date().toISOString().slice(11, 19)} UTC, code ${e.code}${e.reason ? `: ${e.reason}` : ''}`;
         this.onUpstreamClosed(`aisstream closed the connection (code ${e.code}${e.reason ? `: ${e.reason}` : ''})`);
@@ -259,9 +272,9 @@ export class ShipRelay extends DurableObject {
     }
   }
 
-  onAis(data) {
+  async onAis(data) {
     let msg;
-    const raw = typeof data === 'string' ? data : new TextDecoder().decode(data);
+    const raw = await messageText(data);
     this.stats.messages++;
     try {
       msg = JSON.parse(raw);
@@ -276,7 +289,7 @@ export class ShipRelay extends DurableObject {
     }
     this.stats.lastType = msg.MessageType || Object.keys(msg).join(',').slice(0, 60);
     if (msg.MessageType === 'SubscriptionConfirmation' || msg.Message?.SubscriptionConfirmation) {
-      const c = msg.Message?.SubscriptionConfirmation || msg;
+      const c = msg.Message?.SubscriptionConfirmation || msg.Message || msg;
       if (typeof c.CompressionEnabled === 'boolean') this.compression = c.CompressionEnabled;
       return;
     }

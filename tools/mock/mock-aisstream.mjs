@@ -45,6 +45,7 @@ wss.on('connection', (ws, req) => {
     if (!m.APIKey) return ws.close(4001, 'missing APIKey');
     clearTimeout(deadline);
     sub = m;
+    ws.send(Buffer.from(JSON.stringify({ Message: { CompressionEnabled: true }, MessageType: 'SubscriptionConfirmation' })));
     console.log('subscription:', JSON.stringify(m.BoundingBoxes), 'types:', (m.FilterMessageTypes || []).length);
   });
   let tick = 0;
@@ -56,17 +57,18 @@ wss.on('connection', (ws, req) => {
       s.lat += Math.cos((s.cog * Math.PI) / 180) * step;
       s.lon += Math.sin((s.cog * Math.PI) / 180) * step;
       if (!inBoxes(s, sub.BoundingBoxes) || rand() > 0.15) continue;
-      ws.send(JSON.stringify({
+      // Like the real aisstream, send binary frames (JSON text as bytes).
+      ws.send(Buffer.from(JSON.stringify({
         MessageType: 'PositionReport',
         MetaData: { MMSI: s.mmsi, ShipName: s.name, latitude: s.lat, longitude: s.lon, time_utc: new Date().toISOString() },
         Message: { PositionReport: { UserID: s.mmsi, Latitude: s.lat, Longitude: s.lon, Sog: s.sog, Cog: s.cog, TrueHeading: Math.round(s.cog), NavigationalStatus: s.sog ? 0 : 5, Valid: true } },
-      }));
+      })));
       if (tick % 20 === 1) {
-        ws.send(JSON.stringify({
+        ws.send(Buffer.from(JSON.stringify({
           MessageType: 'ShipStaticData',
           MetaData: { MMSI: s.mmsi, ShipName: s.name },
           Message: { ShipStaticData: { Name: s.name, Type: s.type, Destination: 'SAMPLE PORT', ImoNumber: 9000000 + (s.mmsi % 100000), CallSign: 'TEST', Dimension: { A: 150, B: 40, C: 15, D: 15 }, Eta: { Month: 12, Day: 1, Hour: 8, Minute: 0 }, MaximumStaticDraught: 10.5 } },
-        }));
+        })));
       }
     }
   }, 1000);
