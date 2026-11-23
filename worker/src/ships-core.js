@@ -4,8 +4,14 @@
 // A view from the browser: { west, south, east, north } in degrees. "west > east" means the
 // view crosses the 180° line, which AIS bounding boxes can't express, so it becomes two boxes.
 // aisstream wants each box as [[lat, lon], [lat, lon]].
+// Views wider or taller than this are ignored: zoomed out that far, the stream is a flood of
+// messages too small to see, and it's what makes the free-plan relay drop and restart.
+export const MAX_VIEW_DEG = 45;
+
 export function viewToBoxes(v) {
   if (!v || ![v.west, v.south, v.east, v.north].every(Number.isFinite)) return [];
+  const width = v.east >= v.west ? v.east - v.west : 360 - v.west + v.east;
+  if (width > MAX_VIEW_DEG || Math.abs(v.north - v.south) > MAX_VIEW_DEG) return [];
   const s = Math.max(-90, Math.min(v.south, v.north));
   const n = Math.min(90, Math.max(v.south, v.north));
   const w = Math.max(-180, Math.min(180, v.west));

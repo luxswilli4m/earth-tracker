@@ -24,6 +24,7 @@ assert.deepEqual(viewToBoxes({ west: 170, south: -10, east: -170, north: 10 }), 
 assert.deepEqual(viewToBoxes({ west: 'x' }), []);
 const boxes = viewToBoxes({ west: 170, south: -10, east: -170, north: 10 });
 assert.ok(inBoxes(0, 175, boxes) && inBoxes(0, -175, boxes) && !inBoxes(0, 0, boxes));
+assert.deepEqual(viewToBoxes({ west: 100, south: -40, east: 160, north: -10 }), [], 'views wider than 45° are ignored');
 const many = Array.from({ length: 20 }, (_, i) => [[[i, i], [i + 1, i + 1]]]);
 assert.deepEqual(mergeBoxes(many), [[[0, 0], [20, 20]]], 'too many boxes collapse into one');
 

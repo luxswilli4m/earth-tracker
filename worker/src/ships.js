@@ -14,7 +14,7 @@ import { viewToBoxes, inBoxes, mergeBoxes, parseAis, packPos } from './ships-cor
 
 const AIS_URL = 'https://stream.aisstream.io/v0/stream';
 // Shown in the app's status line, so it's easy to confirm which relay version is deployed.
-export const RELAY_BUILD = '2026-11-23c (binary frames)';
+export const RELAY_BUILD = '2026-11-23d (fast start, zoom limit)';
 
 // WebSocket messages can arrive as text, ArrayBuffer, a typed array or a Blob depending on how the
 // sender framed them (aisstream sends binary frames). Turn any of them into text.
@@ -26,11 +26,11 @@ async function messageText(data) {
   return String(data);
 }
 const MESSAGE_TYPES = ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport', 'ShipStaticData', 'StaticDataReport'];
-const IDLE_MS = 2 * 60_000; // hang up this long after the last viewer leaves
+const IDLE_MS = 5 * 60_000; // hang up this long after the last viewer leaves (stays warm for quick returns)
 const POS_TTL = 30 * 60_000; // forget ships not heard from in 30 minutes
 const INFO_TTL = 6 * 60 * 60_000; // keep names and destinations for 6 hours
-const FLUSH_MS = 2_000; // send updates to viewers every 2 seconds
-const RESUB_MIN_MS = 1_500; // aisstream allows at most one subscription change per second
+const FLUSH_MS = 1_000; // send updates to viewers every second
+const RESUB_MIN_MS = 1_100; // aisstream allows at most one subscription change per second
 const MAX_PER_BATCH = 4_000;
 // Until anyone has sent their view, subscribe to a small box (aisstream requires at least one).
 const PLACEHOLDER_BOX = [[[-28, 152.5], [-27, 153.5]]];
@@ -60,7 +60,16 @@ export class ShipRelay extends DurableObject {
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected WebSocket', { status: 426 });
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
-    this.viewers.set(server, { boxes: [], lastSent: 0, infoSent: new Set() });
+    // The browser puts its current view in the URL, so the very first subscription to aisstream is
+    // already the right area (no placeholder, no extra round trip before ships start arriving).
+    const q = new URL(request.url).searchParams.get('view');
+    let boxes = [];
+    if (q) {
+      const [west, south, east, north] = q.split(',').map(Number);
+      boxes = viewToBoxes({ west, south, east, north });
+    }
+    this.viewers.set(server, { boxes, lastSent: 0, infoSent: new Set() });
+    if (boxes.length && this.upstream) this.scheduleResubscribe();
     server.addEventListener('message', (e) => this.onViewerMessage(server, e.data));
     const drop = () => this.dropViewer(server);
     server.addEventListener('close', drop);
@@ -69,6 +78,8 @@ export class ShipRelay extends DurableObject {
     this.ensureUpstream();
     this.ensureFlushing();
     this.sendStatus(server);
+    // If the relay is already warm, send the ships it knows about in this area straight away.
+    this.flushTo(server, this.viewers.get(server), Date.now());
     return new Response(null, { status: 101, webSocket: client, headers: { 'Sec-WebSocket-Protocol': 'earth-tracker' } });
   }
 

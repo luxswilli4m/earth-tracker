@@ -330,6 +330,7 @@ const shipStatusText = {
   connecting: 'Connecting to the ship feed…',
   reconnecting: 'Connection lost, reconnecting…',
   live: 'Live',
+  zoom: 'Zoom in closer to see live ships (a view about the size of Queensland or smaller).',
   error: 'Ship feed unavailable',
 };
 const ships = new ShipLayer(viewer, {

@@ -7,6 +7,8 @@ import { getToken, isSignedIn, gatedFetch } from './auth.js';
 import { SHIP_GROUPS, shipGroup, flagFromMmsi, typeName, navStatus } from './ais-codes.js';
 
 const STALE_MS = 30 * 60_000;
+// Matches the relay's limit (MAX_VIEW_DEG = 45): only stream when zoomed in this close.
+const MAX_VIEW_DEG = 40;
 
 function icon(color, moving) {
   const c = document.createElement('canvas');
@@ -69,7 +71,10 @@ export class ShipLayer {
     if (!isSignedIn()) return this.status('signin');
     if (!CONFIG.workerUrl) return this.status('error', 'Worker URL not set');
     this.status('connecting');
-    const url = `${CONFIG.workerUrl.replace(/^http/, 'ws')}/api/ships`;
+    // Send the current view up front so the relay subscribes to the right area immediately.
+    const v = this.currentView();
+    const qs = v ? `?view=${[v.west, v.south, v.east, v.north].map((x) => x.toFixed(3)).join(',')}` : '';
+    const url = `${CONFIG.workerUrl.replace(/^http/, 'ws')}/api/ships${qs}`;
     const ws = new WebSocket(url, ['earth-tracker', `auth.${getToken()}`]);
     this.ws = ws;
     ws.onopen = () => {
@@ -109,33 +114,43 @@ export class ShipLayer {
     this.onChange();
   }
 
-  // What's on screen, padded a little so ships just outside the edge are ready when you pan.
+  // What's on screen, padded generously so ships just off the edge are already loaded when you
+  // pan. Returns null when zoomed out too far to stream (the relay would ignore it anyway).
   currentView() {
     const r = this.viewer.camera.computeViewRectangle(this.viewer.scene.globe.ellipsoid);
-    if (!r) return { west: -180, south: -85, east: 180, north: 85 };
+    if (!r) return null;
     const d = Cesium.Math.toDegrees;
     let west = d(r.west), east = d(r.east);
-    const south = Math.max(-85, d(r.south)), north = Math.min(85, d(r.north));
+    let south = d(r.south), north = d(r.north);
     const width = east >= west ? east - west : 360 - west + east;
-    if (width > 300) return { west: -180, south, east: 180, north };
-    const pad = width * 0.1;
-    west -= pad; east += pad;
+    const height = north - south;
+    if (width > MAX_VIEW_DEG || height > MAX_VIEW_DEG) return null;
+    // Pad up to 50% each side, but never past the limit.
+    const padX = Math.min(width * 0.5, (MAX_VIEW_DEG - width) / 2);
+    const padY = Math.min(height * 0.5, (MAX_VIEW_DEG - height) / 2);
+    west -= padX; east += padX;
+    south = Math.max(-85, south - padY); north = Math.min(85, north + padY);
     if (west < -180) west += 360;
     if (east > 180) east -= 360;
     return { west, south, east, north };
   }
 
   sendView() {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.enabled) return;
     clearTimeout(this.viewTimer);
     this.viewTimer = setTimeout(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'view', view: this.currentView() }));
-    }, 400);
+      const view = this.currentView();
+      this.zoomedOut = !view;
+      if (this.zoomedOut) this.status('zoom');
+      else if (this.state === 'zoom') this.status(this.lastUpstream === 'live' ? 'live' : 'connecting');
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'view', view }));
+    }, 150);
   }
 
   onMessage(m) {
     if (m.status) {
       const s = m.status;
+      this.lastUpstream = s.upstream;
       // Show what the relay knows, so problems are visible without opening any logs.
       const detail = [`${(s.tracked || 0).toLocaleString()} ships tracked by the relay`];
       if (s.error) detail.push(`feed says: ${s.error}`);
@@ -150,7 +165,8 @@ export class ShipLayer {
         detail.push(`relay version: ${s.build || 'older than 2026-11-23c'}`);
       }
       this.lastStatus = s; // full details for the browser console: earthTracker.ships.lastStatus
-      if (s.upstream === 'error') this.status('error', [s.error || 'ship feed unavailable', ...detail.slice(1)].join('; '));
+      if (this.zoomedOut) this.status('zoom');
+      else if (s.upstream === 'error') this.status('error', [s.error || 'ship feed unavailable', ...detail.slice(1)].join('; '));
       else if (s.upstream === 'live') this.status('live', detail.join('; '));
       else this.status('connecting');
     }
