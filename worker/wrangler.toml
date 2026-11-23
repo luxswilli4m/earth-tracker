@@ -2,6 +2,11 @@ name = "earth-tracker"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
+# Serve on the public workers.dev address (the app calls it from GitHub Pages).
+workers_dev = true
+# Don't publish a separate URL for every uploaded version: fewer public addresses to worry about.
+preview_urls = false
+
 [vars]
 # Sites allowed to call this API from a browser. Add your local dev server if you use one.
 ALLOWED_ORIGINS = "https://luxswilli4m.github.io,http://localhost:8080"

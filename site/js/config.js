@@ -2,7 +2,7 @@
 export const CONFIG = {
   // URL of the deployed Cloudflare Worker (see worker/README.md), e.g.
   // 'https://earth-tracker.<your-subdomain>.workers.dev'. Leave empty until it's deployed.
-  workerUrl: '',
+  workerUrl: 'https://earth-tracker.luc4swilli4ms.workers.dev',
 
   cesiumVersion: '1.147.0',
 };
