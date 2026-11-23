@@ -50,6 +50,21 @@ cd ../tools/mock && npm install && node mock-aisstream.mjs   # fake ship feed (s
 
 Then create `worker/.dev.vars` (git-ignored) with test values, including `AIS_URL=ws://127.0.0.1:9001`, and run `npx wrangler@4 dev`.
 
+## Testing your aisstream key
+
+If live ships won't connect, this checks the key directly from your own computer, bypassing Cloudflare. In PowerShell, from the repo folder:
+
+```powershell
+cd tools\mock
+npm.cmd install
+$s = Read-Host "aisstream key" -AsSecureString
+$env:AIS_KEY = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+node test-aisstream.mjs
+Remove-Item Env:AIS_KEY
+```
+
+Paste the key at the "aisstream key" prompt (it shows as asterisks). The last line removes it from the session again.
+
 ## Notes
 
 - `ALLOWED_ORIGINS` in `wrangler.toml` lists the sites allowed to call the Worker (also enforced for the ship WebSocket). If the site moves, add the new address there.
