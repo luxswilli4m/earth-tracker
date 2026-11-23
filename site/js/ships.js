@@ -148,7 +148,7 @@ export class ShipLayer {
         if (st.sample) detail.push(`unused message: ${st.sample.slice(0, 160)}`);
       }
       this.lastStatus = s; // full details for the browser console: earthTracker.ships.lastStatus
-      if (s.upstream === 'error') this.status('error', s.error || 'ship feed unavailable');
+      if (s.upstream === 'error') this.status('error', [s.error || 'ship feed unavailable', ...detail.slice(1)].join('; '));
       else if (s.upstream === 'live') this.status('live', detail.join('; '));
       else this.status('connecting');
     }
