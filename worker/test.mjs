@@ -46,3 +46,4 @@ assert.equal(parseAis({ MessageType: 'Unknown', MetaData: { MMSI: 5 } }), null);
 assert.deepEqual(packPos(5, { lat: 1.234567, lon: 2, sog: 3.21, cog: null, hdg: 90, nav: 0, ts: 5500 }), [5, 1.23457, 2, 3.2, null, 90, 0, 6]);
 
 console.log('worker tests passed');
+

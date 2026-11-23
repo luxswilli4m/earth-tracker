@@ -31,8 +31,13 @@ function inBoxes(s, boxes) {
   return boxes.some(([[a, b], [c, d]]) => s.lat >= Math.min(a, c) && s.lat <= Math.max(a, c) && s.lon >= Math.min(b, d) && s.lon <= Math.max(b, d));
 }
 
-const wss = new WebSocketServer({ port: PORT });
-wss.on('connection', (ws) => {
+const wss = new WebSocketServer({ port: PORT, perMessageDeflate: true });
+wss.on('connection', (ws, req) => {
+  console.log('client asked for extensions:', req.headers['sec-websocket-extensions'] || 'none');
+  if (process.env.REQUIRE_COMPRESSION && !/permessage-deflate/.test(req.headers['sec-websocket-extensions'] || '')) {
+    console.log('rejecting uncompressed client (like aisstream now does)');
+    return ws.terminate();
+  }
   let sub = null;
   const deadline = setTimeout(() => { console.log('no subscription within 3 s, closing'); ws.close(); }, 3000);
   ws.on('message', (data) => {

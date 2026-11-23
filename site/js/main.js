@@ -3,6 +3,7 @@ import { SatelliteLayer, ORBITS } from './satellites.js';
 import { ShipLayer } from './ships.js';
 import { SHIP_GROUPS } from './ais-codes.js';
 import { authConfigured, isSignedIn, onAuthChange, signIn, signOut } from './auth.js';
+import { setCollector, loadLocal, loadSynced, savePrefs } from './prefs.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -81,7 +82,10 @@ async function loadSatellites() {
   const data = await res.json();
   $('loading-text').textContent = `Calculating ${data.count.toLocaleString()} orbits…`;
   sats = new SatelliteLayer(viewer, data, {
-    onReady: () => applyFilter(),
+    onReady: () => {
+      applyFilter();
+      applyPendingOwner();
+    },
     onFirstPositions: () => {
       $('loading').classList.add('done');
       applyFilter();
@@ -111,6 +115,7 @@ function applyFilter() {
   $('sat-count').textContent = sats.visibleCount().toLocaleString();
 }
 
+const orbitChips = {};
 // Orbit filter chips, coloured to match the points on the globe
 for (const [key, o] of Object.entries(ORBITS)) {
   const b = document.createElement('button');
@@ -123,6 +128,7 @@ for (const [key, o] of Object.entries(ORBITS)) {
     b.classList.toggle('off', !orbitsOn.has(key));
     applyFilter();
   });
+  orbitChips[key] = b;
   $('orbit-chips').append(b);
 }
 $('owner-filter').addEventListener('change', applyFilter);
@@ -337,6 +343,7 @@ function renderShipCount() {
   $('ship-count').textContent = ships.enabled && ships.state === 'live' ? `${shown.toLocaleString()} on map` : '';
 }
 const shipGroupsOn = new Set(Object.keys(SHIP_GROUPS));
+const shipChips = {};
 for (const [key, g] of Object.entries(SHIP_GROUPS)) {
   const b = document.createElement('button');
   b.className = 'orbit-chip';
@@ -348,6 +355,7 @@ for (const [key, g] of Object.entries(SHIP_GROUPS)) {
     b.classList.toggle('off', !shipGroupsOn.has(key));
     ships.setGroups(new Set(shipGroupsOn));
   });
+  shipChips[key] = b;
   $('ship-chips').append(b);
 }
 $('ship-toggle').addEventListener('change', (e) => {
@@ -369,6 +377,84 @@ onAuthChange((signedIn) => {
   if (signedIn && !ships.enabled) ships.status('off');
 });
 ships.status(isSignedIn() ? 'off' : 'signin');
+
+// ---------- Remembered layer choices ----------
+// Saved on this device straight away, and synced to the Worker when signed in (see prefs.js).
+let applyingPrefs = false;
+let pendingOwner = null;
+
+setCollector(() => ({
+  satellites: $('sat-toggle').checked,
+  orbits: [...orbitsOn],
+  owner: $('owner-filter').value,
+  payloadOnly: $('payload-only').checked,
+  ships: $('ship-toggle').checked,
+  shipGroups: [...shipGroupsOn],
+  lanes: $('lanes-toggle').checked,
+  lanesOpacity: Number($('lanes-opacity').value),
+  labels: $('labels-toggle').checked,
+  panelCollapsed: $('layers-panel').classList.contains('collapsed'),
+}));
+
+function setCheck(id, value) {
+  if (typeof value !== 'boolean' || $(id).checked === value) return;
+  $(id).checked = value;
+  $(id).dispatchEvent(new Event('change'));
+}
+
+function applyPendingOwner() {
+  if (pendingOwner === null) return;
+  const sel = $('owner-filter');
+  if ([...sel.options].some((o) => o.value === pendingOwner)) {
+    sel.value = pendingOwner;
+    sel.dispatchEvent(new Event('change'));
+    pendingOwner = null;
+  }
+}
+
+function applyPrefs(p) {
+  if (!p) return;
+  applyingPrefs = true;
+  try {
+    setCheck('sat-toggle', p.satellites);
+    if (Array.isArray(p.orbits)) {
+      for (const [key, b] of Object.entries(orbitChips)) if (orbitsOn.has(key) !== p.orbits.includes(key)) b.click();
+    }
+    setCheck('payload-only', p.payloadOnly);
+    if (typeof p.owner === 'string') {
+      pendingOwner = p.owner;
+      applyPendingOwner();
+    }
+    if (Array.isArray(p.shipGroups)) {
+      for (const [key, b] of Object.entries(shipChips)) if (shipGroupsOn.has(key) !== p.shipGroups.includes(key)) b.click();
+    }
+    if (typeof p.lanesOpacity === 'number') {
+      $('lanes-opacity').value = p.lanesOpacity;
+      $('lanes-opacity').dispatchEvent(new Event('input'));
+    }
+    setCheck('lanes-toggle', p.lanes);
+    setCheck('labels-toggle', p.labels);
+    if (typeof p.panelCollapsed === 'boolean' && $('layers-panel').classList.contains('collapsed') !== p.panelCollapsed) {
+      $('panel-toggle').click();
+    }
+    if (p.ships && isSignedIn()) setCheck('ship-toggle', true); // live ships need sign-in
+  } finally {
+    applyingPrefs = false;
+  }
+}
+
+// Any change in the panel (ticks, chips, slider, owner) is saved.
+for (const type of ['change', 'input', 'click']) {
+  $('layers-panel').addEventListener(type, () => {
+    if (!applyingPrefs) setTimeout(savePrefs, 0);
+  });
+}
+
+applyPrefs(loadLocal()?.prefs);
+loadSynced().then(applyPrefs);
+onAuthChange((signedIn) => {
+  if (signedIn) loadSynced().then(applyPrefs);
+});
 
 // ---------- Sign-in ----------
 const authBtn = $('auth-btn');

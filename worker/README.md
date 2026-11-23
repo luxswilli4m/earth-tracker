@@ -1,6 +1,6 @@
 # Earth Tracker Worker
 
-The small Cloudflare server behind Earth Tracker. It handles sign-in, and relays the live ship feed to signed-in viewers through a Durable Object called `ShipRelay`. Everything that uses an API quota sits behind sign-in, so nobody can use up your free plans without the password.
+The small Cloudflare server behind Earth Tracker. It handles sign-in, and relays the live ship feed to signed-in viewers through a Durable Object called `ShipRelay`. It also stores your layer choices (in a second Durable Object, `SiteStore`) so they follow you between devices. Everything that uses an API quota sits behind sign-in, so nobody can use up your free plans without the password.
 
 Deploying it safely, step by step, is covered in the **Secure Worker deployment runbook** (in the App development project). The short version, in Windows PowerShell from this folder:
 
@@ -33,10 +33,11 @@ Secrets live only in Cloudflare. They're never in this repo, the browser, or cha
 | `POST /api/session` | Anyone (10 tries/min per IP) | Password → session token |
 | `GET /api/me` | Signed in | Is my session still valid? |
 | `WS /api/ships` | Signed in, from an allowed site | Live ships in the area you're viewing |
+| `GET`/`PUT /api/prefs` | Signed in | Saved layer choices, shared across your devices |
 
 ## How the ship relay keeps within the free plan
 
-- One shared connection to aisstream.io for all viewers (aisstream allows 3 per account and no browser connections).
+- One shared connection to aisstream.io for all viewers (aisstream allows 3 per account and no browser connections). It asks for compression explicitly: aisstream cuts off uncompressed connections, and Workers don't offer compression on outgoing WebSockets unless asked.
 - It only connects while a signed-in viewer has ships switched on, and hangs up 2 minutes after the last one leaves.
 - It subscribes only to the areas viewers can currently see, and each viewer only receives ships in their own view.
 - On the free plan, going over a daily limit makes requests fail until 00:00 UTC (10am Brisbane); it never charges.

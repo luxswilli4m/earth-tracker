@@ -142,6 +142,7 @@ export class ShipLayer {
       const st = s.stats;
       if (st && !s.tracked) {
         detail.push(`${st.messages} messages received, ${st.parsed} usable, ${st.connects} connection${st.connects === 1 ? '' : 's'}`);
+        if (s.compression === false) detail.push('compression not negotiated');
         if (st.lastError) detail.push(`last problem: ${st.lastError}`);
         if (st.lastClose) detail.push(`last disconnect: ${st.lastClose}`);
         if (st.lastType) detail.push(`last message type: ${st.lastType}`);

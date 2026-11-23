@@ -4,6 +4,7 @@
 //   GET  /api/me        is this token still valid?
 //   GET  /api/health    is the Worker up?
 //   WS   /api/ships     live ships, signed-in only (relayed by the ShipRelay Durable Object)
+//   GET/PUT /api/prefs  saved layer choices, signed-in only (SiteStore Durable Object)
 //
 // Everything that costs quota or uses an API key goes through requireAuth().
 //
@@ -15,12 +16,15 @@
 //   ALLOWED_ORIGINS comma-separated list of sites allowed to call this API
 import { makeToken, passwordMatches, requireAuth, allowedOrigins } from './auth.js';
 
+import { cleanPrefs } from './prefs.js';
+
 export { ShipRelay } from './ships.js';
+export { SiteStore } from './prefs.js';
 
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
   const h = {
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -71,6 +75,24 @@ export default {
       const session = await requireAuth(request, env);
       if (!session) return json(request, env, { signedIn: false }, 401);
       return json(request, env, { signedIn: true, expires: session.exp });
+    }
+
+    if (url.pathname === '/api/prefs') {
+      if (!(await requireAuth(request, env))) return json(request, env, { error: 'Sign in required' }, 401);
+      const store = env.STORE.get(env.STORE.idFromName('site'));
+      if (request.method === 'GET') return json(request, env, (await store.get()) || { prefs: null, updated: 0 });
+      if (request.method === 'PUT') {
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json(request, env, { error: 'Expected JSON body' }, 400);
+        }
+        const prefs = cleanPrefs(body.prefs);
+        if (!prefs) return json(request, env, { error: 'Expected { prefs: {...} }' }, 400);
+        return json(request, env, await store.put(prefs));
+      }
+      return json(request, env, { error: 'Method not allowed' }, 405);
     }
 
     if (url.pathname === '/api/ships') {

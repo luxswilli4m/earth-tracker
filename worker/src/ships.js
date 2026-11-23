@@ -181,7 +181,11 @@ export class ShipRelay extends DurableObject {
     try {
       // AIS_URL can be overridden for local testing; the key never leaves this object.
       const url = (this.env.AIS_URL || AIS_URL).replace(/^ws/, 'http');
-      const res = await fetch(url, { headers: { Upgrade: 'websocket' } });
+      // Ask for compression explicitly: Workers don't offer it on outgoing WebSockets by default,
+      // and aisstream cuts off uncompressed connections. (Tested: the same key works compressed.)
+      const res = await fetch(url, {
+        headers: { Upgrade: 'websocket', 'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits' },
+      });
       const ws = res.webSocket;
       if (!ws) throw new Error(`aisstream refused the connection (HTTP ${res.status})`);
       ws.accept();
@@ -196,7 +200,8 @@ export class ShipRelay extends DurableObject {
         this.stats.lastClose = `${new Date().toISOString().slice(11, 19)} UTC, code ${e.code}${e.reason ? `: ${e.reason}` : ''}`;
         this.onUpstreamClosed(`aisstream closed the connection (code ${e.code}${e.reason ? `: ${e.reason}` : ''})`);
       });
-      ws.addEventListener('error', () => this.onUpstreamClosed('connection error'));
+      ws.addEventListener('error', (e) => this.onUpstreamClosed(`connection error${e && e.message ? `: ${e.message}` : ''}`));
+      this.compression = (res.headers.get('Sec-WebSocket-Extensions') || '').includes('permessage-deflate');
       this.upstreamState = 'live';
       this.retryMs = 2_000;
     } catch (err) {

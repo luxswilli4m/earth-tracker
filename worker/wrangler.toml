@@ -26,6 +26,15 @@ namespace_id = "1001"
 name = "SHIPS"
 class_name = "ShipRelay"
 
+# Saved layer choices, synced across devices for signed-in users.
+[[durable_objects.bindings]]
+name = "STORE"
+class_name = "SiteStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ShipRelay"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SiteStore"]
