@@ -1,0 +1,57 @@
+# Builds the shipping-lanes map tiles from the World Bank / IMF ship density data (510 MB) and
+# saves them to the Actions cache, where the site build (deploy.yml) picks them up.
+# Runs when the builder script changes, or on demand from the Actions tab.
+name: Build shipping lanes
+
+on:
+  push:
+    branches: [main]
+    paths: [scripts/build-lanes.py, .github/workflows/lanes.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # to start a site rebuild once the tiles are ready
+
+concurrency:
+  group: lanes
+  cancel-in-progress: true
+
+jobs:
+  tiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for tiles already built
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: site/tiles/lanes
+          key: lanes-v1-${{ hashFiles('scripts/build-lanes.py') }}
+          lookup-only: true
+
+      - uses: actions/setup-python@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Build tiles
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --quiet rasterio pillow numpy
+          python3 scripts/build-lanes.py
+
+      - name: Save tiles
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: site/tiles/lanes
+          key: lanes-v1-${{ hashFiles('scripts/build-lanes.py') }}
+
+      - name: Rebuild the site with the new tiles
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main

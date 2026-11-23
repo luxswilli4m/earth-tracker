@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -62,7 +63,8 @@ def download(dest):
             f.write(chunk)
             done += len(chunk)
             if total:
-                sys.stdout.write(f'\r  {done / 1e6:.0f} / {total / 1e6:.0f} MB')
+                if done % (50 << 20) < (1 << 22):
+                    log(f'  {done / 1e6:.0f} / {total / 1e6:.0f} MB')
         print()
 
 
@@ -79,18 +81,50 @@ def raster_path(path):
 
 
 def load_global(path):
+    """Shrink the source onto a global lat/lon grid of the top tile level.
+
+    The real raster is ~72,000 x 34,000 cells. Warping it is very slow, so when it's already in
+    lat/lon (it is), we read it in horizontal strips, block-average each strip down, and paste
+    it into place: one pass over the file, a few minutes at most.
+    """
     w, h = 2 ** (MAX_LEVEL + 1) * TILE, 2 ** MAX_LEVEL * TILE
-    log(f'Resampling to a {w} x {h} global grid (this takes a few minutes on the real data)')
+    deg = 360 / w  # degrees per output pixel
+    out = np.zeros((h, w), dtype=np.float32)
+    t0 = time.time()
     with rasterio.open(path) as src:
-        log(f'  source: {src.width} x {src.height}, {src.dtypes[0]}, CRS {src.crs}, bounds {tuple(round(b, 2) for b in src.bounds)}')
-        with WarpedVRT(src, crs='EPSG:4326', width=w, height=h,
-                       transform=rasterio.transform.from_bounds(-180, -90, 180, 90, w, h),
-                       resampling=Resampling.average, src_nodata=src.nodata, nodata=0,
-                       warp_mem_limit=2048) as vrt:
-            data = vrt.read(1, out_dtype='float32')
-    data[~np.isfinite(data)] = 0
-    data[data < 0] = 0
-    return data
+        b = src.bounds
+        log(f'  source: {src.width} x {src.height}, {src.dtypes[0]}, CRS {src.crs}, bounds {tuple(round(v, 3) for v in b)}')
+        if src.crs and src.crs.to_epsg() not in (4326, None):
+            log('  source is not lat/lon: falling back to warping (slow)')
+            with WarpedVRT(src, crs='EPSG:4326', width=w, height=h,
+                           transform=rasterio.transform.from_bounds(-180, -90, 180, 90, w, h),
+                           resampling=Resampling.average, src_nodata=src.nodata, nodata=0,
+                           warp_mem_limit=2048) as vrt:
+                out = vrt.read(1, out_dtype='float32')
+        else:
+            # Where the source's edges land on the output grid, and how many source cells per output pixel.
+            x0 = int(round((b.left + 180) / deg))
+            y0 = int(round((90 - b.top) / deg))
+            ow = int(round((b.right - b.left) / deg))
+            oh = int(round((b.top - b.bottom) / deg))
+            strips = 32
+            rows_per = int(np.ceil(oh / strips))
+            for k in range(strips):
+                r0, r1 = k * rows_per, min(oh, (k + 1) * rows_per)
+                if r0 >= r1:
+                    break
+                sy0 = int(round(r0 * src.height / oh))
+                sy1 = int(round(r1 * src.height / oh))
+                win = rasterio.windows.Window(0, sy0, src.width, sy1 - sy0)
+                strip = src.read(1, window=win, out_shape=(r1 - r0, ow), resampling=Resampling.average,
+                                 out_dtype='float32', masked=True).filled(0)
+                yy0, xx0 = y0 + r0, x0
+                ys, xs = slice(max(yy0, 0), min(yy0 + strip.shape[0], h)), slice(max(xx0, 0), min(xx0 + ow, w))
+                out[ys, xs] = strip[ys.start - yy0:ys.stop - yy0, xs.start - xx0:xs.stop - xx0]
+                log(f'  strip {k + 1}/{strips} done ({time.time() - t0:.0f} s)')
+    out[~np.isfinite(out)] = 0
+    out[out < 0] = 0
+    return out
 
 
 def to_unit(data):

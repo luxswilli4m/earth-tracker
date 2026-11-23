@@ -264,8 +264,15 @@ handler.setInputAction((e) => {
 
 // ---------- Shipping lanes (public, static tiles) ----------
 let lanesLayer = null;
-$('lanes-toggle').addEventListener('change', (e) => {
+$('lanes-toggle').addEventListener('change', async (e) => {
   if (e.target.checked && !lanesLayer) {
+    // The tiles are built by a separate job; until it has run once, say so rather than show nothing.
+    const ok = await fetch('tiles/lanes/meta.json', { cache: 'no-cache' }).then((r) => r.ok).catch(() => false);
+    if (!ok) {
+      e.target.checked = false;
+      $('lanes-note').textContent = 'The shipping-lanes map is still being prepared. Check back in a little while.';
+      return;
+    }
     lanesLayer = viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
       url: 'tiles/lanes/{z}/{x}/{y}.png',
       tilingScheme: new Cesium.GeographicTilingScheme(),
