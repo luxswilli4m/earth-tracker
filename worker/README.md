@@ -1,41 +1,56 @@
 # Earth Tracker Worker
 
-The small Cloudflare server behind Earth Tracker. Right now it only handles sign-in. In later stages it will also relay the live ship and aircraft feeds and serve the markets panel, all behind that sign-in, so nobody can use up your free API quotas without the password.
+The small Cloudflare server behind Earth Tracker. It handles sign-in, and relays the live ship feed to signed-in viewers through a Durable Object called `ShipRelay`. Everything that uses an API quota sits behind sign-in, so nobody can use up your free plans without the password.
 
-## One-time setup (about 5 minutes, on your desktop)
+Deploying it safely, step by step, is covered in the **Secure Worker deployment runbook** (in the App development project). The short version, in Windows PowerShell from this folder:
 
-You need Node.js installed. Run these from this `worker` folder:
-
-```sh
-npx wrangler login
+```powershell
+npx.cmd wrangler@4 login
+npx.cmd wrangler@4 secret put SITE_PASSWORD
+npx.cmd wrangler@4 secret put TOKEN_SECRET
+npx.cmd wrangler@4 secret put AISSTREAM_KEY
+npx.cmd wrangler@4 deploy
+npx.cmd wrangler@4 logout
 ```
 
-This opens your browser to sign in to Cloudflare. Nothing to copy or paste: no API token to manage.
+Use `npx.cmd`, not `npx`: Windows PowerShell blocks `npx` as a script.
+
+## Secrets
+
+| Name | What it is | Where it comes from |
+| --- | --- | --- |
+| `SITE_PASSWORD` | The shared sign-in password | Your password manager |
+| `TOKEN_SECRET` | Signs 30-day sessions; changing it signs everyone out | Generated (see the runbook) |
+| `AISSTREAM_KEY` | Live ship data | aisstream.io → API Keys |
+
+Secrets live only in Cloudflare. They're never in this repo, the browser, or chat.
+
+## Endpoints
+
+| Path | Who | What |
+| --- | --- | --- |
+| `GET /api/health` | Anyone | `{"ok":true}` if the Worker is up |
+| `POST /api/session` | Anyone (10 tries/min per IP) | Password → session token |
+| `GET /api/me` | Signed in | Is my session still valid? |
+| `WS /api/ships` | Signed in, from an allowed site | Live ships in the area you're viewing |
+
+## How the ship relay keeps within the free plan
+
+- One shared connection to aisstream.io for all viewers (aisstream allows 3 per account and no browser connections).
+- It only connects while a signed-in viewer has ships switched on, and hangs up 2 minutes after the last one leaves.
+- It subscribes only to the areas viewers can currently see, and each viewer only receives ships in their own view.
+- On the free plan, going over a daily limit makes requests fail until 00:00 UTC (10am Brisbane); it never charges.
+
+## Testing locally
 
 ```sh
-npx wrangler secret put SITE_PASSWORD
+node test.mjs                                   # sign-in and relay logic
+cd ../tools/mock && npm install && node mock-aisstream.mjs   # fake ship feed (synthetic ships)
 ```
 
-Type the shared password you want to use. Make it long, since it guards your API quotas.
-
-```sh
-npx wrangler secret put TOKEN_SECRET
-```
-
-Paste any long random string, at least 40 characters (a password manager's generator works well). It signs the 30-day sessions. Changing it later signs everyone out.
-
-```sh
-npx wrangler deploy
-```
-
-Wrangler prints the Worker's address, something like `https://earth-tracker.<your-subdomain>.workers.dev`. Put that address into `workerUrl` in `site/js/config.js` and push, and the **Sign in** button goes live.
-
-## Checking it works
-
-Open `https://earth-tracker.<your-subdomain>.workers.dev/api/health` in a browser. You should see `{"ok":true}`.
+Then create `worker/.dev.vars` (git-ignored) with test values, including `AIS_URL=ws://127.0.0.1:9001`, and run `npx wrangler@4 dev`.
 
 ## Notes
 
-- If `wrangler deploy` complains about the `[[ratelimits]]` block, delete that block from `wrangler.toml` and deploy again. Sign-in still works, just without the 10-attempts-per-minute limit.
-- `ALLOWED_ORIGINS` in `wrangler.toml` lists the sites allowed to call the Worker. If you move the site (for example to a custom domain), add the new address there.
-- Run `node test.mjs` to check the sign-in logic locally.
+- `ALLOWED_ORIGINS` in `wrangler.toml` lists the sites allowed to call the Worker (also enforced for the ship WebSocket). If the site moves, add the new address there.
+- `preview_urls = false` keeps the Worker on one public address. Wrangler warns about it on deploy; that's expected.

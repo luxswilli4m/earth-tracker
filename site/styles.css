@@ -149,3 +149,9 @@ dialog .error { color: #ff7a7a; margin: 8px 0 0; }
   .cesium-viewer-animationContainer { display: none; }
   .cesium-viewer-timelineContainer { left: 0; }
 }
+
+.status-line { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
+.status-line.live { color: #46d38a; }
+.status-line.error { color: #ff7a7a; }
+.source a { color: inherit; }
+input[type='range'] { width: 100%; margin: 8px 0 0; accent-color: var(--accent); }

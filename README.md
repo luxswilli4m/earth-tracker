@@ -5,7 +5,7 @@
 A live 3D globe of what's moving around the planet and how the world trades. It's built in stages:
 
 1. **Globe, sign-in and satellites** ← done
-2. Ships and shipping lanes
+2. **Ships and shipping lanes** ← done
 3. Aircraft
 4. Earthquakes, wildfires, ports and chokepoints, plus movement trails
 5. Trade flows, tariffs, agreements and policy events, as a learning tool
@@ -17,7 +17,9 @@ The map is public. Signing in only unlocks the features that use API quotas (the
 
 - **Front end** (`site/`): a static site on GitHub Pages using [CesiumJS](https://cesium.com/platform/cesiumjs/) for the globe. It needs no Cesium ion account: the base imagery is the Natural Earth II texture that comes with Cesium.
 - **Satellites**: every day, GitHub Actions downloads the active-satellite orbit data from [CelesTrak](https://celestrak.org) (one request a day, per their usage policy), along with owner details from the satellite catalogue, and publishes it with the site. The data is never committed, so the repo stays small. Your browser then calculates every satellite's position from its orbit using SGP4 ([satellite.js](https://github.com/shashwatak/satellite-js)), in a background thread, so the dots move live with no live feed. Drag the timeline to see the sky at any other time.
-- **Worker** (`worker/`): a Cloudflare Worker that handles sign-in, and later the live relays and market data. Setup steps are in [`worker/README.md`](worker/README.md).
+- **Shipping lanes**: the World Bank / IMF Global Shipping Traffic Density map (six years of ship positions, CC BY 4.0) is cut into map tiles during the build by `scripts/build-lanes.py`. The 510 MB download happens once; the tiles are cached by GitHub Actions after that.
+- **Live ships** (signed in only): the browser connects to the Worker, which holds one shared connection to [aisstream.io](https://aisstream.io) and sends each viewer only the ships in their view. The feed only runs while someone is watching.
+- **Worker** (`worker/`): a Cloudflare Worker that handles sign-in and the live ship relay, and later the markets data. Setup steps are in [`worker/README.md`](worker/README.md).
 
 ## First-time setup
 
@@ -42,5 +44,7 @@ npx serve site -l 8080                                  # then open http://local
 - Orbit data and the satellite catalogue: [CelesTrak](https://celestrak.org), from US Space Force tracking data
 - Globe: [CesiumJS](https://cesium.com) (Apache 2.0), with Natural Earth II imagery
 - Orbit maths: [satellite.js](https://github.com/shashwatak/satellite-js) (MIT)
+- Shipping lanes: [Global Shipping Traffic Density](https://datacatalog.worldbank.org/search/dataset/0037580), World Bank / IMF (CC BY 4.0)
+- Live ship positions: [aisstream.io](https://aisstream.io)
 
 Positions are calculated from published orbit data and are typically accurate to within a few kilometres. Satellites that have manoeuvred since their last data update will be off until the next daily refresh.

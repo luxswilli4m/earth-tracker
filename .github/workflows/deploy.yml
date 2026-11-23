@@ -32,6 +32,21 @@ jobs:
       - name: Fetch satellite data from CelesTrak
         run: node scripts/fetch-satellites.mjs
 
+      # Shipping-lanes tiles: built once from the 510 MB World Bank file, then reused from the
+      # Actions cache on every later build. Editing scripts/build-lanes.py rebuilds them.
+      - name: Restore shipping-lanes tiles
+        id: lanes-cache
+        uses: actions/cache@v4
+        with:
+          path: site/tiles/lanes
+          key: lanes-v1-${{ hashFiles('scripts/build-lanes.py') }}
+
+      - name: Build shipping-lanes tiles
+        if: steps.lanes-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --quiet rasterio pillow numpy
+          python3 scripts/build-lanes.py
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

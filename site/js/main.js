@@ -1,5 +1,7 @@
 /* global Cesium */
 import { SatelliteLayer, ORBITS } from './satellites.js';
+import { ShipLayer } from './ships.js';
+import { SHIP_GROUPS } from './ais-codes.js';
 import { authConfigured, isSignedIn, onAuthChange, signIn, signOut } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
@@ -104,7 +106,7 @@ $('owner-filter').addEventListener('change', applyFilter);
 $('payload-only').addEventListener('change', applyFilter);
 $('sat-toggle').addEventListener('change', (e) => {
   sats?.setEnabled(e.target.checked);
-  if (!e.target.checked) select(-1);
+  if (!e.target.checked && selection?.layer === 'satellite') select(null);
 });
 $('panel-toggle').addEventListener('click', () => {
   const p = $('layers-panel');
@@ -146,7 +148,7 @@ $('sat-search').addEventListener('keydown', (e) => {
 function pick(i) {
   results.hidden = true;
   $('sat-search').value = sats.meta[i].name;
-  select(i);
+  selectSat(i);
   flyTo(i);
 }
 function flyTo(i) {
@@ -161,37 +163,28 @@ function flyTo(i) {
 }
 
 // ---------- Selection + info card ----------
-let selected = -1;
+// One selection at a time, from any layer: { layer: 'satellite', id: index } or { layer: 'ship', id: mmsi }.
+let selection = null;
 const fmt = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d }));
+const latLon = (lat, lon) => (lat === null || lat === undefined ? '—' : `${fmt(Math.abs(lat), 2)}°${lat >= 0 ? 'N' : 'S'}, ${fmt(Math.abs(lon), 2)}°${lon >= 0 ? 'E' : 'W'}`);
 
-function select(i) {
-  if (i === selected) return;
-  selected = i;
-  sats?.select(i);
-  $('info-card').hidden = i < 0;
+function select(layer, id) {
+  if (selection && selection.layer === layer && selection.id === id) return;
+  if (selection?.layer === 'satellite') sats?.select(-1);
+  if (selection?.layer === 'ship') ships?.select(null);
+  selection = layer ? { layer, id } : null;
+  if (layer === 'satellite') sats?.select(id);
+  if (layer === 'ship') ships?.select(id);
+  $('info-card').hidden = !selection;
   renderCard();
 }
+// Older call sites select satellites by index; -1 clears.
+const selectSat = (i) => (i < 0 ? select(null) : select('satellite', i));
 
-function renderCard() {
-  if (selected < 0 || !sats) return;
-  const d = sats.details(selected);
-  $('info-kicker').textContent = d.orbitName;
-  $('info-kicker').style.color = ORBITS[d.orbit].color;
-  $('info-name').textContent = d.name;
-  const periodText = d.period < 120 ? `${fmt(d.period, 1)} min` : `${fmt(d.period / 60, 2)} h`;
-  const rows = [
-    ['Owner', d.ownerName],
-    ['Type', d.typeName],
-    ['Launched', d.launch || '—'],
-    ['NORAD ID', String(d.norad)],
-    ['Int’l designator', d.intl || '—'],
-    ['Altitude', d.altitude === null ? '—' : `${fmt(d.altitude)} km`],
-    ['Speed', d.speed === null ? '—' : `${fmt(d.speed, 2)} km/s`],
-    ['Over', d.lat === null ? '—' : `${fmt(Math.abs(d.lat), 1)}°${d.lat >= 0 ? 'N' : 'S'}, ${fmt(Math.abs(d.lon), 1)}°${d.lon >= 0 ? 'E' : 'W'}`],
-    ['Orbit period', periodText],
-    ['Inclination', `${fmt(d.inc, 1)}°`],
-    ['Perigee / apogee', `${fmt(d.perigee)} / ${fmt(d.apogee)} km`],
-  ];
+function fillCard(kicker, color, name, rows, note) {
+  $('info-kicker').textContent = kicker;
+  $('info-kicker').style.color = color;
+  $('info-name').textContent = name;
   const dl = $('info-list');
   dl.innerHTML = '';
   for (const [k, v] of rows) {
@@ -201,25 +194,147 @@ function renderCard() {
     dd.textContent = v;
     dl.append(dt, dd);
   }
+  $('info-note').textContent = note;
+}
+
+function renderCard() {
+  if (!selection) return;
+  if (selection.layer === 'satellite' && sats) return renderSatCard(selection.id);
+  if (selection.layer === 'ship' && ships) return renderShipCard(selection.id);
+}
+
+function renderSatCard(i) {
+  const d = sats.details(i);
+  const periodText = d.period < 120 ? `${fmt(d.period, 1)} min` : `${fmt(d.period / 60, 2)} h`;
   const age = Math.abs(d.epochAgeHours);
   const ageText = age < 48 ? `${fmt(age)} hours` : `${fmt(age / 24)} days`;
-  $('info-note').textContent = d.valid
+  fillCard(d.orbitName, ORBITS[d.orbit].color, d.name, [
+    ['Owner', d.ownerName],
+    ['Type', d.typeName],
+    ['Launched', d.launch || '—'],
+    ['NORAD ID', String(d.norad)],
+    ['Int’l designator', d.intl || '—'],
+    ['Altitude', d.altitude === null ? '—' : `${fmt(d.altitude)} km`],
+    ['Speed', d.speed === null ? '—' : `${fmt(d.speed, 2)} km/s`],
+    ['Over', d.lat === null ? '—' : latLon(d.lat, d.lon)],
+    ['Orbit period', periodText],
+    ['Inclination', `${fmt(d.inc, 1)}°`],
+    ['Perigee / apogee', `${fmt(d.perigee)} / ${fmt(d.apogee)} km`],
+  ], d.valid
     ? `Position calculated from orbit data ${ageText} ${d.epochAgeHours >= 0 ? 'old' : 'ahead'}. The line shows its path over the next orbit.`
-    : 'No valid position at this time: the orbit data may be stale, or the object may have re-entered.';
+    : 'No valid position at this time: the orbit data may be stale, or the object may have re-entered.');
+}
+
+function renderShipCard(mmsi) {
+  const d = ships.details(mmsi);
+  if (!d) return select(null);
+  const age = d.ageSec < 90 ? `${fmt(d.ageSec)} seconds` : `${fmt(d.ageSec / 60)} minutes`;
+  fillCard(d.groupLabel, d.color, d.name, [
+    ['Flag', d.flag],
+    ['Type', d.type],
+    ['Status', d.nav],
+    ['Speed', d.sog === null ? '—' : `${fmt(d.sog, 1)} kn (${fmt(d.sog * 1.852, 1)} km/h)`],
+    ['Course', d.cog === null ? '—' : `${fmt(d.cog)}°`],
+    ['Heading', d.hdg === null ? '—' : `${fmt(d.hdg)}°`],
+    ['Destination', d.dest || '—'],
+    ['ETA', d.eta || '—'],
+    ['Position', latLon(d.lat, d.lon)],
+    ['Size', d.size || '—'],
+    ['Draught', d.draught ? `${fmt(d.draught, 1)} m` : '—'],
+    ['IMO', d.imo ? String(d.imo) : '—'],
+    ['MMSI', String(d.mmsi)],
+    ['Call sign', d.call || '—'],
+  ], `Last AIS report ${age} ago. Destination and ETA are typed in by the crew, so they can be out of date. Flag is worked out from the MMSI.`);
 }
 setInterval(renderCard, 1000);
-$('info-close').addEventListener('click', () => select(-1));
+$('info-close').addEventListener('click', () => select(null));
 
 const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 handler.setInputAction((e) => {
   const hit = viewer.scene.pick(e.position);
-  if (hit && hit.id && hit.id.layer === 'satellite') select(hit.id.index);
-  else select(-1);
+  const id = hit && hit.id;
+  if (id && id.layer === 'satellite') select('satellite', id.index);
+  else if (id && id.layer === 'ship') select('ship', id.mmsi);
+  else select(null);
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 handler.setInputAction((e) => {
   const hit = viewer.scene.pick(e.endPosition);
   viewer.canvas.style.cursor = hit && hit.id && hit.id.layer ? 'pointer' : '';
 }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+// ---------- Shipping lanes (public, static tiles) ----------
+let lanesLayer = null;
+$('lanes-toggle').addEventListener('change', (e) => {
+  if (e.target.checked && !lanesLayer) {
+    lanesLayer = viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+      url: 'tiles/lanes/{z}/{x}/{y}.png',
+      tilingScheme: new Cesium.GeographicTilingScheme(),
+      maximumLevel: 5,
+      credit: 'Ship density: World Bank / IMF (CC BY 4.0)',
+    }));
+    lanesLayer.alpha = Number($('lanes-opacity').value);
+  }
+  if (lanesLayer) lanesLayer.show = e.target.checked;
+});
+$('lanes-opacity').addEventListener('input', (e) => {
+  if (lanesLayer) lanesLayer.alpha = Number(e.target.value);
+});
+
+// ---------- Live ships (signed-in only) ----------
+const shipStatusText = {
+  off: 'Turn on to see live ships in the area you’re viewing.',
+  signin: 'Sign in to see live ships.',
+  connecting: 'Connecting to the ship feed…',
+  reconnecting: 'Connection lost, reconnecting…',
+  live: 'Live',
+  error: 'Ship feed unavailable',
+};
+const ships = new ShipLayer(viewer, {
+  onStatus: (state, detail) => {
+    const el = $('ship-status');
+    el.className = `status-line ${state === 'live' ? 'live' : state === 'error' ? 'error' : ''}`;
+    el.textContent = shipStatusText[state] + (detail ? ` (${detail})` : '');
+    renderShipCount();
+  },
+  onChange: renderShipCount,
+});
+function renderShipCount() {
+  const { shown } = ships.counts();
+  $('ship-count').textContent = ships.enabled && ships.state === 'live' ? `${shown.toLocaleString()} on map` : '';
+}
+const shipGroupsOn = new Set(Object.keys(SHIP_GROUPS));
+for (const [key, g] of Object.entries(SHIP_GROUPS)) {
+  const b = document.createElement('button');
+  b.className = 'orbit-chip';
+  b.innerHTML = `<span class="dot" style="background:${g.color}"></span>`;
+  b.append(g.label);
+  b.addEventListener('click', () => {
+    if (shipGroupsOn.has(key)) shipGroupsOn.delete(key);
+    else shipGroupsOn.add(key);
+    b.classList.toggle('off', !shipGroupsOn.has(key));
+    ships.setGroups(new Set(shipGroupsOn));
+  });
+  $('ship-chips').append(b);
+}
+$('ship-toggle').addEventListener('change', (e) => {
+  if (e.target.checked && !isSignedIn()) {
+    e.target.checked = false;
+    ships.status('signin');
+    if (authConfigured()) $('auth-btn').click();
+    return;
+  }
+  if (!e.target.checked && selection?.layer === 'ship') select(null);
+  ships.setEnabled(e.target.checked);
+});
+onAuthChange((signedIn) => {
+  if (!signedIn && ships.enabled) {
+    $('ship-toggle').checked = false;
+    ships.setEnabled(false);
+    ships.status('signin');
+  }
+  if (signedIn && !ships.enabled) ships.status('off');
+});
+ships.status(isSignedIn() ? 'off' : 'signin');
 
 // ---------- Sign-in ----------
 const authBtn = $('auth-btn');
@@ -266,4 +381,4 @@ loadSatellites().catch((err) => {
   document.querySelector('.spinner').style.display = 'none';
 });
 
-window.earthTracker = { viewer, get sats() { return sats; } }; // handy for debugging in the console
+window.earthTracker = { viewer, ships, get sats() { return sats; } }; // handy for debugging in the console

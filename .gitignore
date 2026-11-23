@@ -9,3 +9,6 @@ site/data/
 
 # Generated on demand by tools/make-sample.mjs
 tools/sample-gp.json
+
+# Built at deploy time by scripts/build-lanes.py; never committed
+site/tiles/

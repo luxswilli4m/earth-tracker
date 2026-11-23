@@ -56,8 +56,27 @@
         <p class="source" id="sat-source"></p>
       </section>
 
+      <section class="layer">
+        <label class="layer-title">
+          <input type="checkbox" id="ship-toggle">
+          <span>Live ships</span>
+          <span class="count" id="ship-count"></span>
+        </label>
+        <p class="status-line" id="ship-status">Sign in to see live ships.</p>
+        <div class="orbit-chips" id="ship-chips"></div>
+        <p class="source">Live AIS positions via <a href="https://aisstream.io" target="_blank" rel="noopener">aisstream.io</a>. Coverage is best near coasts.</p>
+      </section>
+
+      <section class="layer">
+        <label class="layer-title">
+          <input type="checkbox" id="lanes-toggle">
+          <span>Shipping lanes</span>
+        </label>
+        <input type="range" id="lanes-opacity" min="0.2" max="1" step="0.05" value="0.85" aria-label="Shipping lanes opacity">
+        <p class="source">Ship traffic density 2015–2021, from <a href="https://datacatalog.worldbank.org/search/dataset/0037580" target="_blank" rel="noopener">World Bank / IMF</a> (CC BY 4.0).</p>
+      </section>
+
       <section class="layer upcoming">
-        <div class="layer-title"><span>Ships</span><span class="soon">stage 2</span></div>
         <div class="layer-title"><span>Aircraft</span><span class="soon">stage 3</span></div>
         <div class="layer-title"><span>Earthquakes, fires, ports</span><span class="soon">stage 4</span></div>
         <div class="layer-title"><span>Trade flows and policy</span><span class="soon">stage 5</span></div>

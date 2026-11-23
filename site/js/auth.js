@@ -29,6 +29,7 @@ function write(s) {
 let session = read();
 
 export const authConfigured = () => Boolean(CONFIG.workerUrl);
+export const getToken = () => (isSignedIn() ? session.token : '');
 export const isSignedIn = () => Boolean(session && session.expires > Date.now());
 export const onAuthChange = (fn) => listeners.add(fn);
 

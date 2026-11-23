@@ -20,3 +20,12 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+# Stage 2: the live-ship relay. One shared object holds the single aisstream.io connection.
+[[durable_objects.bindings]]
+name = "SHIPS"
+class_name = "ShipRelay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ShipRelay"]
