@@ -136,8 +136,11 @@ export class ShipLayer {
   onMessage(m) {
     if (m.status) {
       const s = m.status;
+      // Show what the relay knows, so problems are visible without opening any logs.
+      const detail = [`${(s.tracked || 0).toLocaleString()} ships tracked by the relay`];
+      if (s.error) detail.push(`feed says: ${s.error}`);
       if (s.upstream === 'error') this.status('error', s.error || 'ship feed unavailable');
-      else if (s.upstream === 'live') this.status('live');
+      else if (s.upstream === 'live') this.status('live', detail.join('; '));
       else this.status('connecting');
     }
     if (m.type !== 'ships') return;
