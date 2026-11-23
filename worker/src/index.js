@@ -19,6 +19,7 @@ import { makeToken, passwordMatches, requireAuth, allowedOrigins } from './auth.
 import { cleanPrefs } from './prefs.js';
 
 export { ShipRelay } from './ships.js';
+import { RELAY_BUILD } from './ships.js';
 export { SiteStore } from './prefs.js';
 
 function corsHeaders(request, env) {
@@ -46,7 +47,7 @@ export default {
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
 
-    if (url.pathname === '/api/health') return json(request, env, { ok: true });
+    if (url.pathname === '/api/health') return json(request, env, { ok: true, build: RELAY_BUILD });
 
     if (!env.SITE_PASSWORD || !env.TOKEN_SECRET) {
       return json(request, env, { error: 'Worker secrets not set (SITE_PASSWORD, TOKEN_SECRET)' }, 500);

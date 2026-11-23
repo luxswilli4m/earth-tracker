@@ -13,6 +13,8 @@ import { DurableObject } from 'cloudflare:workers';
 import { viewToBoxes, inBoxes, mergeBoxes, parseAis, packPos } from './ships-core.js';
 
 const AIS_URL = 'https://stream.aisstream.io/v0/stream';
+// Shown in the app's status line, so it's easy to confirm which relay version is deployed.
+export const RELAY_BUILD = '2026-11-23c (binary frames)';
 
 // WebSocket messages can arrive as text, ArrayBuffer, a typed array or a Blob depending on how the
 // sender framed them (aisstream sends binary frames). Turn any of them into text.
@@ -149,6 +151,7 @@ export class ShipRelay extends DurableObject {
   status() {
     return {
       upstream: this.upstreamState,
+      build: RELAY_BUILD,
       error: this.upstreamError,
       tracked: this.pos.size,
       compression: this.compression,

@@ -147,6 +147,7 @@ export class ShipLayer {
         if (st.lastClose) detail.push(`last disconnect: ${st.lastClose}`);
         if (st.lastType) detail.push(`last message type: ${st.lastType}`);
         if (st.sample) detail.push(`unused message: ${st.sample.slice(0, 160)}`);
+        detail.push(`relay version: ${s.build || 'older than 2026-11-23c'}`);
       }
       this.lastStatus = s; // full details for the browser console: earthTracker.ships.lastStatus
       if (s.upstream === 'error') this.status('error', [s.error || 'ship feed unavailable', ...detail.slice(1)].join('; '));

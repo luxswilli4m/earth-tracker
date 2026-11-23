@@ -92,6 +92,9 @@ async function loadSatellites() {
     },
   });
 
+  // The layer may have been switched off (or remembered as off) before the data finished loading.
+  sats.setEnabled($('sat-toggle').checked);
+
   const updated = new Date(data.generated);
   $('sat-source').textContent =
     `${data.source}. Orbit data updated ${updated.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.`;
