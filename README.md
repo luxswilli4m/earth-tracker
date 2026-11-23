@@ -42,7 +42,9 @@ npx serve site -l 8080                                  # then open http://local
 ## Data sources and credits
 
 - Orbit data and the satellite catalogue: [CelesTrak](https://celestrak.org), from US Space Force tracking data
-- Globe: [CesiumJS](https://cesium.com) (Apache 2.0), with Natural Earth II imagery
+- Globe: [CesiumJS](https://cesium.com) (Apache 2.0), with Natural Earth II imagery underneath
+- Satellite imagery: [EOxCloudless](https://cloudless.eox.at) by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025), free for non-commercial use. If the app ever goes commercial, switch to the 2016 layer (CC BY 4.0) or a paid EOX licence.
+- Place names and borders: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, rendering © [EOX](https://maps.eox.at)
 - Orbit maths: [satellite.js](https://github.com/shashwatak/satellite-js) (MIT)
 - Shipping lanes: [Global Shipping Traffic Density](https://datacatalog.worldbank.org/search/dataset/0037580), World Bank / IMF (CC BY 4.0)
 - Live ship positions: [aisstream.io](https://aisstream.io)

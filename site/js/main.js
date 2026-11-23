@@ -23,6 +23,29 @@ const viewer = new Cesium.Viewer('globe', {
   animation: true,
   timeline: true,
 });
+// Sharper imagery on top: EOxCloudless, a cloud-free Sentinel-2 satellite mosaic (~10 m detail, zoom 0-14).
+// Free for non-commercial use with this attribution. The Natural Earth layer underneath covers the
+// poles, which Web Mercator tiles don't reach. If this app ever goes commercial, switch to the 2016
+// layer (CC BY 4.0) or a paid EOX licence.
+const eoxCredit = new Cesium.Credit(
+  '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2025)',
+  true,
+);
+viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+  url: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg',
+  maximumLevel: 14,
+  credit: eoxCredit,
+}));
+// Optional place names, coastlines and borders (OpenStreetMap data, rendered by EOX).
+const labelsLayer = viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+  url: 'https://tiles.maps.eox.at/wmts/1.0.0/overlay_bright_3857/default/g/{z}/{y}/{x}.png',
+  maximumLevel: 14,
+  credit: new Cesium.Credit(
+    'Labels: data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, rendering © <a href="https://maps.eox.at" target="_blank" rel="noopener">EOX</a>',
+    true,
+  ),
+}));
+labelsLayer.show = false;
 viewer.scene.globe.enableLighting = true; // day/night shading that follows the clock
 viewer.scene.globe.showGroundAtmosphere = true;
 viewer.scene.screenSpaceCameraController.minimumZoomDistance = 50_000;
@@ -280,8 +303,12 @@ $('lanes-toggle').addEventListener('change', async (e) => {
       credit: 'Ship density: World Bank / IMF (CC BY 4.0)',
     }));
     lanesLayer.alpha = Number($('lanes-opacity').value);
+    viewer.imageryLayers.raiseToTop(labelsLayer); // keep place names readable above the lanes
   }
   if (lanesLayer) lanesLayer.show = e.target.checked;
+});
+$('labels-toggle').addEventListener('change', (e) => {
+  labelsLayer.show = e.target.checked;
 });
 $('lanes-opacity').addEventListener('input', (e) => {
   if (lanesLayer) lanesLayer.alpha = Number(e.target.value);

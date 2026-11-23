@@ -139,6 +139,15 @@ export class ShipLayer {
       // Show what the relay knows, so problems are visible without opening any logs.
       const detail = [`${(s.tracked || 0).toLocaleString()} ships tracked by the relay`];
       if (s.error) detail.push(`feed says: ${s.error}`);
+      const st = s.stats;
+      if (st && !s.tracked) {
+        detail.push(`${st.messages} messages received, ${st.parsed} usable, ${st.connects} connection${st.connects === 1 ? '' : 's'}`);
+        if (st.lastError) detail.push(`last problem: ${st.lastError}`);
+        if (st.lastClose) detail.push(`last disconnect: ${st.lastClose}`);
+        if (st.lastType) detail.push(`last message type: ${st.lastType}`);
+        if (st.sample) detail.push(`unused message: ${st.sample.slice(0, 160)}`);
+      }
+      this.lastStatus = s; // full details for the browser console: earthTracker.ships.lastStatus
       if (s.upstream === 'error') this.status('error', s.error || 'ship feed unavailable');
       else if (s.upstream === 'live') this.status('live', detail.join('; '));
       else this.status('connecting');

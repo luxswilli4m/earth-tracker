@@ -38,7 +38,8 @@ export class ShipRelay extends DurableObject {
     this.subTimer = null;
     this.flushTimer = null;
     this.retryMs = 2_000;
-    this.messages = 0;
+    // Diagnostics shown under "Live ships", so problems are visible without opening any logs.
+    this.stats = { connects: 0, messages: 0, parsed: 0, lastType: '', lastClose: '', lastError: '', sample: '' };
   }
 
   // ---------- viewers ----------
@@ -136,7 +137,13 @@ export class ShipRelay extends DurableObject {
   }
 
   status() {
-    return { upstream: this.upstreamState, error: this.upstreamError, tracked: this.pos.size, compression: this.compression };
+    return {
+      upstream: this.upstreamState,
+      error: this.upstreamError,
+      tracked: this.pos.size,
+      compression: this.compression,
+      stats: this.stats,
+    };
   }
 
   sendStatus(ws) {
@@ -170,7 +177,7 @@ export class ShipRelay extends DurableObject {
       return;
     }
     this.upstreamState = 'connecting';
-    this.upstreamError = '';
+    this.stats.connects++;
     try {
       // AIS_URL can be overridden for local testing; the key never leaves this object.
       const url = (this.env.AIS_URL || AIS_URL).replace(/^ws/, 'http');
@@ -185,7 +192,10 @@ export class ShipRelay extends DurableObject {
       this.subKey = JSON.stringify(sub.BoundingBoxes);
       this.lastSubAt = Date.now();
       ws.addEventListener('message', (e) => this.onAis(e.data));
-      ws.addEventListener('close', (e) => this.onUpstreamClosed(`closed (${e.code}${e.reason ? `: ${e.reason}` : ''})`));
+      ws.addEventListener('close', (e) => {
+        this.stats.lastClose = `${new Date().toISOString().slice(11, 19)} UTC, code ${e.code}${e.reason ? `: ${e.reason}` : ''}`;
+        this.onUpstreamClosed(`aisstream closed the connection (code ${e.code}${e.reason ? `: ${e.reason}` : ''})`);
+      });
       ws.addEventListener('error', () => this.onUpstreamClosed('connection error'));
       this.upstreamState = 'live';
       this.retryMs = 2_000;
@@ -200,6 +210,7 @@ export class ShipRelay extends DurableObject {
     if (this.upstreamState === 'idle') return; // we hung up on purpose
     this.upstreamState = 'error';
     this.upstreamError = reason;
+    this.stats.lastError = reason;
     for (const ws of this.viewers.keys()) this.sendStatus(ws);
     // 'error' and 'close' often fire together: only schedule one retry.
     if (this.viewers.size > 0 && !this.retryTimer) {
@@ -245,23 +256,33 @@ export class ShipRelay extends DurableObject {
 
   onAis(data) {
     let msg;
+    const raw = typeof data === 'string' ? data : new TextDecoder().decode(data);
+    this.stats.messages++;
     try {
-      msg = JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data));
+      msg = JSON.parse(raw);
     } catch {
+      this.stats.lastError = `unreadable message: ${raw.slice(0, 120)}`;
       return;
     }
-    if (msg.error) {
-      this.upstreamError = String(msg.error);
+    if (msg.error || msg.Error) {
+      this.upstreamError = String(msg.error || msg.Error);
+      this.stats.lastError = `aisstream says: ${this.upstreamError}`;
       return;
     }
+    this.stats.lastType = msg.MessageType || Object.keys(msg).join(',').slice(0, 60);
     if (msg.MessageType === 'SubscriptionConfirmation' || msg.Message?.SubscriptionConfirmation) {
       const c = msg.Message?.SubscriptionConfirmation || msg;
       if (typeof c.CompressionEnabled === 'boolean') this.compression = c.CompressionEnabled;
       return;
     }
     const r = parseAis(msg);
-    if (!r) return;
-    this.messages++;
+    if (!r) {
+      // Keep one example of a message we couldn't use, trimmed, to spot format changes.
+      if (!this.stats.sample) this.stats.sample = raw.slice(0, 300);
+      return;
+    }
+    this.stats.parsed++;
+    this.upstreamError = '';
     if (r.pos) this.pos.set(r.mmsi, r.pos);
     if (r.info) {
       const prev = this.info.get(r.mmsi) || {};
